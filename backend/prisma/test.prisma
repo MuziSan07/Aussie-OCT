@@ -1,0 +1,271 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER AUTHENTICATION & PROFILE
+// ============================================
+
+model EmailSetup {
+  id            Int         @id @default(autoincrement())
+  email         String      @unique
+  phone         String
+  password      String
+  createdAt     DateTime    @default(now())
+  lastActivity  DateTime?
+  status        UserStatus  @default(ACTIVE)
+  role          UserRole    @default(STUDENT)  // NEW: Admin or Student
+  
+  // Relations
+  profile       UserProfile?
+  tests         UserTest[]
+  chapterProgress ChapterProgress[]
+  testResults   TestResult[]
+  simulationResults SimulationResult[]
+  bookmarks     Bookmark[]              // NEW: Bookmark questions
+  achievements  Achievement[]           // NEW: User achievements/badges
+}
+
+model UserProfile {
+  id          Int        @id @default(autoincrement())
+  userId      Int        @unique
+  user        EmailSetup @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username    String     @unique
+  phone       String
+  profilePic  String?
+  bio         String?    // NEW: User bio
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model UserTest {
+  id         Int        @id @default(autoincrement())
+  userId     Int
+  user       EmailSetup @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testName   String
+  createdAt  DateTime   @default(now())
+}
+
+// ============================================
+// CHAPTER & QUESTION MANAGEMENT
+// ============================================
+
+model Chapter {
+  id          Int        @id @default(autoincrement())
+  image       String
+  title       String
+  subtitle    String?
+  description String?
+  status      Boolean    @default(true)
+  order       Int?       // NEW: Chapter ordering
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  // Relations
+  questions   Question[]
+  chapterProgress ChapterProgress[]
+  testResults TestResult[]
+}
+
+model Question {
+  id        Int       @id @default(autoincrement())
+  chapterId Int
+  chapter   Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  question  String
+  options   Option[]
+  feedback  String?
+  audio     String?
+  image     String?    // NEW: Question image
+  testType  TestType  @default(FREE)
+  difficulty Difficulty @default(MEDIUM)  // NEW: Question difficulty
+  status    Boolean   @default(true)
+  order     Int?      // NEW: Question ordering
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  // Relations
+  bookmarks Bookmark[]
+}
+
+model Option {
+  id         Int      @id @default(autoincrement())
+  questionId Int
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+  isCorrect  Boolean  @default(false)
+  order      Int?     // NEW: Option ordering
+}
+
+// ============================================
+// USER PROGRESS TRACKING
+// ============================================
+
+// Track user's progress in each chapter
+model ChapterProgress {
+  id                Int        @id @default(autoincrement())
+  userId            Int
+  user              EmailSetup @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapterId         Int
+  chapter           Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  
+  // Progress metrics
+  questionsAttempted Int       @default(0)
+  questionsCorrect   Int       @default(0)
+  totalQuestions     Int       @default(0)
+  progressPercentage Float     @default(0)
+  
+  // Status
+  lastAttemptDate   DateTime?
+  isCompleted       Boolean    @default(false)
+  bestScore         Float?     // NEW: Best score achieved
+  attemptsCount     Int        @default(0)  // NEW: Number of attempts
+  
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@unique([userId, chapterId])
+  @@index([userId])
+  @@index([chapterId])
+}
+
+// ============================================
+// TEST RESULTS & SCORING
+// ============================================
+
+// Store individual practice test results
+model TestResult {
+  id            Int        @id @default(autoincrement())
+  userId        Int
+  user          EmailSetup @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapterId     Int
+  chapter       Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  
+  // Scoring
+  score         Int        // Number of correct answers
+  totalQuestions Int
+  percentage    Float
+  passed        Boolean    @default(false)  // NEW: Did they pass?
+  
+  // Performance metrics
+  timeSpent     Int?       // Time in seconds
+  averageTimePerQuestion Float?  // NEW: Average time per question
+  
+  // Data storage
+  answers       Json       // Store user's answers as JSON
+  // Example: { "questionId": { "selectedOption": 1, "isCorrect": true, "timeSpent": 30 } }
+  
+  createdAt     DateTime   @default(now())
+  
+  @@index([userId])
+  @@index([chapterId])
+  @@index([createdAt])
+}
+
+// Store simulation test results
+model SimulationResult {
+  id             Int        @id @default(autoincrement())
+  userId         Int
+  user           EmailSetup @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Scoring
+  score          Int
+  totalQuestions Int
+  percentage     Float
+  passed         Boolean
+  
+  // Performance metrics
+  timeSpent      Int?
+  averageTimePerQuestion Float?  // NEW
+  
+  // Breakdown by difficulty
+  easyCorrect    Int?       // NEW: Correct easy questions
+  mediumCorrect  Int?       // NEW: Correct medium questions
+  hardCorrect    Int?       // NEW: Correct hard questions
+  
+  // Data storage
+  answers        Json
+  questionsData  Json?      // NEW: Store which questions were in this test
+  
+  createdAt      DateTime   @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================
+// BOOKMARKS & FAVORITES
+// ============================================
+
+model Bookmark {
+  id         Int        @id @default(autoincrement())
+  userId     Int
+  user       EmailSetup @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId Int
+  question   Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  note       String?    // NEW: User can add notes to bookmarks
+  createdAt  DateTime   @default(now())
+  
+  @@unique([userId, questionId])
+  @@index([userId])
+}
+
+// ============================================
+// ACHIEVEMENTS & GAMIFICATION
+// ============================================
+
+model Achievement {
+  id          Int        @id @default(autoincrement())
+  userId      Int
+  user        EmailSetup @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type        AchievementType
+  title       String
+  description String?
+  icon        String?
+  earnedAt    DateTime   @default(now())
+  
+  @@index([userId])
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+enum UserRole {
+  ADMIN
+  STUDENT
+}
+
+enum TestType {
+  FREE
+  PAID
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum AchievementType {
+  FIRST_TEST_COMPLETED
+  CHAPTER_MASTER        // Complete a chapter with 100%
+  PERFECT_SCORE         // Get 100% on any test
+  SPEED_DEMON           // Complete test in record time
+  BOOKWORM              // Bookmark 10 questions
+  DAILY_STREAK_7        // 7 day streak
+  DAILY_STREAK_30       // 30 day streak
+  ALL_CHAPTERS_COMPLETE // Complete all chapters
+  SIMULATION_MASTER     // Pass simulation test
+  HUNDRED_TESTS         // Complete 100 tests
+}
