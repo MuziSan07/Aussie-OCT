@@ -1,4 +1,5 @@
 // backend/server.js
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -26,7 +27,25 @@ const app = express();
 // =====================
 // Middleware
 // =====================
-app.use(cors());
+
+// CORS allow-list. Set CORS_ORIGINS as a comma-separated list of origins.
+// Defaults to the local Create React App dev server.
+const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Allow non-browser clients (no origin) and any allow-listed origin.
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+  })
+);
 app.use(express.json());
 
 // Serve uploaded files
